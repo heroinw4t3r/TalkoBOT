@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Talko — Создание пары</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root{--violet:#7C4DFF;--violet2:#B388FF;--bg:#ffffff;--text:#222}
+    *{box-sizing:border-box}
+    body{margin:0;background: var(--bg) url('/static/bg.svg') no-repeat center/cover fixed;
+      font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:var(--text)}
+    .nav{position:sticky;top:0;backdrop-filter:saturate(140%) blur(8px);background:rgba(255,255,255,.7);border-bottom:1px solid rgba(124,77,255,.12); z-index:5}
+    .nav .inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:14px 20px}
+    .brand{display:flex;align-items:center;gap:10px;font-weight:700}
+    .logo{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,var(--violet),var(--violet2)); box-shadow:0 6px 18px rgba(124,77,255,.35)}
+    .links{display:flex;gap:10px}
+    .pill{background:linear-gradient(135deg,var(--violet),var(--violet2));border:none;border-radius:999px;padding:8px 12px; color:#fff; text-decoration:none}
+
+    .wrap{max-width:1200px;margin:0 auto;padding:36px 28px}
+    .page{opacity:0; transform: translateY(6px); transition: opacity .35s cubic-bezier(.2,.8,.2,1), transform .35s cubic-bezier(.2,.8,.2,1)}
+    .page.ready{opacity:1; transform:none}
+    .page.exiting{opacity:0; transform: translateY(8px)}
+    h1{font-size:22px;margin:8px 0 18px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:22px}
+    .pane{background:#fff;border:1px solid rgba(124,77,255,.15);border-radius:18px;padding:18px;box-shadow:0 12px 30px rgba(124,77,255,.15)}
+    .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}
+    .card{background:linear-gradient(160deg,rgba(124,77,255,0.08),rgba(179,136,255,0.08)) padding-box,
+                 linear-gradient(160deg,rgba(124,77,255,0.35),rgba(179,136,255,0.35)) border-box;
+      border:1px solid transparent;border-radius:14px;padding:12px}
+    .pair{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .btn{background:linear-gradient(135deg,var(--violet),var(--violet2));color:#fff;border:none;border-radius:12px;padding:10px 12px;cursor:pointer}
+    .row{display:flex;gap:8px;margin-top:10px}
+    .muted{color:#555}
+  </style>
+  <script>
+    const forms = {{ forms_json | safe }};
+    const pairs = {{ buddies_json | safe }};
+  </script>
+</head>
+<body>
+  <nav class="nav">
+    <div class="inner">
+      <div class="brand"><div class="logo"></div>Talko</div>
+      <div class="links">
+        <a class="pill" href="/">Анкеты</a>
+        <a class="pill" href="/project">Создание пары</a>
+        <a class="pill" href="/pairs">Пары</a>
+      </div>
+    </div>
+  </nav>
+  <div id="page" class="page">
+  <div class="wrap">
+    <h1>Создание пары</h1>
+    <div class="grid">
+      <div class="pane">
+        <h3>Доступные анкеты</h3>
+        <div class="cards" id="forms"></div>
+      </div>
+      <div class="pane">
+        <h3>Собрать пару</h3>
+        <div id="pickA" class="muted">Выберите первую анкету…</div>
+        <div id="pickB" class="muted" style="margin-top:6px">Затем выберите вторую…</div>
+        <div class="row"><button class="btn" onclick="makePair()">Создать пару</button></div>
+        <h3 style="margin-top:18px">Готовые пары</h3>
+        <div id="pairs"></div>
+        <div class="row"><a class="btn" href="/pairs" style="text-decoration:none;display:inline-block">Открыть страницу пар</a></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function startEnter(){
+      const p = document.getElementById('page');
+      requestAnimationFrame(()=> p.classList.add('ready'));
+    }
+    function startExit(url){
+      const p = document.getElementById('page');
+      p.classList.add('exiting');
+      setTimeout(()=>{ window.location.href = url; }, 220);
+    }
+    function wireLinks(){
+      document.querySelectorAll('a').forEach(a=>{
+        const href = a.getAttribute('href')||'';
+        if(href.startsWith('http') || href.startsWith('mailto:') || href.startsWith('#')) return;
+        a.addEventListener('click', (e)=>{ e.preventDefault(); startExit(href); });
+      });
+    }
+    let selA = null, selB = null;
+    const pairedIds = new Set();
+    for(const p of pairs){ if(p.a) pairedIds.add(p.a.id); if(p.b) pairedIds.add(p.b.id); }
+
+    function briefCard(c){
+      return `<div class='card'>
+        <div><b>${c.full_name}</b></div>
+        <div class='muted'>Возраст: ${c.age}</div>
+        <div class='muted'>Уровень: ${c.level}</div>
+        ${pairedIds.has(c.id) ? `<div class='row'><span class='muted'>Уже в паре</span></div>` : `<div class='row'><button class='btn' onclick='selectForm(${c.id}, "${c.full_name.replace(/'/g,"&#39;")}")'>Выбрать</button></div>`}
+      </div>`
+    }
+    function renderForms(){
+      const container=document.getElementById('forms');
+      container.innerHTML = forms.map(briefCard).join('');
+    }
+    function selectForm(id,name){
+      if(!selA){ selA = id; document.getElementById('pickA').textContent = `A: ${name}`; }
+      else if(!selB && id!==selA){ selB = id; document.getElementById('pickB').textContent = `B: ${name}`; }
+      else { selA = id; selB = null; document.getElementById('pickA').textContent = `A: ${name}`; document.getElementById('pickB').textContent = 'Затем выберите вторую…'; }
+    }
+    async function makePair(){
+      if(!selA || !selB || selA===selB){ alert('Выберите две разные анкеты'); return; }
+      const resp = await fetch('/pair', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({a: selA, b: selB})});
+      if(resp.ok){ location.reload(); } else { const t=await resp.text(); alert('Ошибка: '+t); }
+    }
+    async function removePair(id){
+      const resp = await fetch('/pair/delete', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id})});
+      if(resp.ok){ location.reload(); } else { alert('Ошибка удаления пары'); }
+    }
+    function renderPairs(){
+      const root = document.getElementById('pairs');
+      root.innerHTML = pairs.map(p=>`<div class='pair'>${briefCard(p.a)}${briefCard(p.b)}<div class='row'><button class='btn' onclick='removePair(${p.id})'>Удалить пару</button></div></div>`).join('');
+    }
+    renderForms();
+    renderPairs();
+    wireLinks();
+    startEnter();
+  </script>
+</body>
+</html>
+
+

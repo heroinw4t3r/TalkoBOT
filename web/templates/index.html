@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Talko — Анкеты</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root{--violet:#7C4DFF;--violet2:#B388FF;--bg:#ffffff;--card:#fff;--text:#1f1739;--glass: rgba(255,255,255,0.6); --border: rgba(124,77,255,0.22)}
+    *{box-sizing:border-box}
+    body{margin:0; background: var(--bg) url('/static/bg.svg') no-repeat center/cover fixed;
+      font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:var(--text)}
+    .nav{position:sticky;top:0;backdrop-filter:saturate(140%) blur(8px);background:rgba(255,255,255,.7);border-bottom:1px solid rgba(124,77,255,.12); z-index:5}
+    .nav .inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:14px 20px}
+    .brand{display:flex;align-items:center;gap:10px;font-weight:700}
+    .logo{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,var(--violet),var(--violet2)); box-shadow:0 6px 18px rgba(124,77,255,.35)}
+    .links{display:flex;gap:10px}
+    .pill{background:linear-gradient(135deg,var(--violet),var(--violet2));border:none;border-radius:999px;padding:8px 12px; color:#fff; text-decoration:none}
+
+    .wrap{max-width:1200px;margin:0 auto;padding:36px 28px}
+    .page{opacity:0; transform: translateY(6px); transition: opacity .35s cubic-bezier(.2,.8,.2,1), transform .35s cubic-bezier(.2,.8,.2,1)}
+    .page.ready{opacity:1; transform:none}
+    .page.exiting{opacity:0; transform: translateY(8px)}
+    .hero{display:flex;flex-direction:column;gap:10px;margin:12px 0 22px}
+    .hero h1{font-size:28px;margin:0}
+    .subtitle{color:#5a5a7a}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:22px;margin-top:22px}
+    .card{
+      background:linear-gradient(160deg,rgba(124,77,255,0.08),rgba(179,136,255,0.08)) padding-box,
+                 linear-gradient(160deg,rgba(124,77,255,0.35),rgba(179,136,255,0.35)) border-box;
+      border:1px solid transparent;border-radius:18px;padding:20px;cursor:pointer;
+      box-shadow:0 10px 30px rgba(124,77,255,0.15);transition:transform .08s ease, box-shadow .2s ease
+    }
+    .card:hover{transform:translateY(-2px);box-shadow:0 12px 36px rgba(124,77,255,0.22)}
+    .card .n{font-weight:700;font-size:16px}
+    .muted{color:#555}
+    .chips{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+    .chip{font-size:12px;padding:6px 10px;border-radius:999px;background:rgba(124,77,255,.08);border:1px solid rgba(124,77,255,.22);color:#4a36b8}
+    /* modal */
+    .overlay{position:fixed;inset:0;background:rgba(20,16,40,0.35);backdrop-filter:blur(6px);display:none;align-items:center;justify-content:center;padding:18px;z-index:10}
+    .modal{max-width:720px;width:100%;background:#fff;border-radius:18px;border:1px solid rgba(124,77,255,0.2);box-shadow:0 20px 60px rgba(124,77,255,0.28);padding:18px 18px 8px}
+    .modal h2{margin:6px 4px 10px;font-size:20px}
+    .row{display:grid;grid-template-columns:1fr 2fr;gap:8px;padding:8px;border-bottom:1px dashed #eee}
+    .row:last-child{border-bottom:none}
+    .k{color:#555}
+    .close{display:inline-block;margin:4px 0 10px;background:linear-gradient(135deg,var(--violet),var(--violet2));color:#fff;border:none;border-radius:12px;padding:10px 14px;cursor:pointer}
+    .badge{display:inline-block;margin-left:auto;background:rgba(124,77,255,.12);color:#5a3bd6;border:1px solid rgba(124,77,255,.25);padding:4px 8px;border-radius:999px;font-size:12px}
+    /* photo modal */
+    .overlay-photo{position:fixed;inset:0;background:rgba(20,16,40,0.45);backdrop-filter:blur(8px);display:none;align-items:center;justify-content:center;padding:22px;z-index:20}
+    .modal-photo{max-width:90vw;max-height:90vh;background:#fff;border-radius:18px;border:1px solid rgba(124,77,255,0.25);box-shadow:0 30px 80px rgba(124,77,255,0.35);padding:12px;display:flex;flex-direction:column;gap:10px}
+    .modal-photo header{display:flex;justify-content:space-between;align-items:center;padding:4px 6px 0 6px}
+    .modal-photo h3{margin:0;font-size:18px}
+    .photo-box{display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(124,77,255,.06),rgba(179,136,255,.06));border:1px dashed rgba(124,77,255,.25);border-radius:14px;padding:10px;max-width:86vw;max-height:78vh}
+    .photo-box img{max-width:100%;max-height:74vh;border-radius:12px}
+    .sel{appearance:none;padding:10px 12px;border:1px solid #e6e6f3;border-radius:12px;background:#fff;color:#222;box-shadow:0 6px 14px rgba(124,77,255,.08);outline:none;min-width:160px}
+    .sel:focus{border-color:#bba9ff;box-shadow:0 8px 18px rgba(124,77,255,.16)}
+    .filters{display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between;padding:16px 18px;border:1px solid var(--border);border-radius:18px;background:var(--glass);backdrop-filter:saturate(140%) blur(10px); margin-bottom:22px}
+    .hint{color:#6a6a8a;font-size:13px}
+    body::before{content:"";position:fixed;inset:auto -10% 40% -10%;height:420px;pointer-events:none;background:radial-gradient(closest-side,rgba(124,77,255,.18),transparent 70%)}
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="inner">
+      <div class="brand"><div class="logo"></div>Talko</div>
+      <div class="links">
+        <a class="pill" href="/">Анкеты</a>
+        <a class="pill" href="/project">Создание пары</a>
+        <a class="pill" href="/pairs">Пары</a>
+      </div>
+    </div>
+  </nav>
+  <div id="page" class="page">
+  <div class="wrap">
+    <div class="hero">
+      <h1>Анкеты</h1>
+      <div class="subtitle">Подбираем собеседников для учебы с куратором—преподавателем</div>
+    </div>
+    <div class="filters">
+      <form id="filters" onsubmit="applyFilters(event)" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <select id="f_level" class="sel"><option value="">Уровень</option><option>Beginner (A1 - A2)</option><option>Intermediate (B1 - B2)</option><option>Advanced (C1 - C2)</option></select>
+        <select id="f_gender" class="sel"><option value="">Партнер</option><option>Девушка</option><option>Парень</option><option>Не имеет значения</option></select>
+        <select id="f_day" class="sel"><option value="">День</option><option>Понедельник</option><option>Вторник</option><option>Среда</option><option>Четверг</option><option>Пятница</option><option>Суббота</option></select>
+        <select id="f_time" class="sel"><option value="">Время</option><option>Утром</option><option>Днем</option><option>Вечером</option><option>Не имеет значения</option></select>
+        <button class="close" style="padding:10px 14px" type="submit">Фильтр</button>
+      </form>
+    </div>
+    <div id="grid" class="grid"></div>
+  </div>
+
+  <div id="overlay" class="overlay" onclick="closeModal(event)">
+    <div class="modal" onclick="event.stopPropagation()">
+      <button class="close" onclick="closeModal()">Закрыть</button>
+      <h2 id="m_title">Анкета</h2>
+      <div id="m_body"></div>
+    </div>
+  </div>
+
+  <div id="overlayPhoto" class="overlay-photo" onclick="closePhoto(event)">
+    <div class="modal-photo" onclick="event.stopPropagation()">
+      <header>
+        <h3 id="p_title">Скриншот репоста</h3>
+        <button class="close" onclick="closePhoto()">Закрыть</button>
+      </header>
+      <div class="photo-box">
+        <img id="p_img" alt="Скриншот репоста" />
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const cards = {{ cards_json | safe }};
+    function startEnter(){
+      const p = document.getElementById('page');
+      requestAnimationFrame(()=> p.classList.add('ready'));
+    }
+    function startExit(url){
+      const p = document.getElementById('page');
+      p.classList.add('exiting');
+      setTimeout(()=>{ window.location.href = url; }, 220);
+    }
+    function wireLinks(){
+      document.querySelectorAll('a').forEach(a=>{
+        const href = a.getAttribute('href')||'';
+        if(href.startsWith('http') || href.startsWith('mailto:') || href.startsWith('#')) return;
+        a.addEventListener('click', (e)=>{ e.preventDefault(); startExit(href); });
+      });
+    }
+    const grid = document.getElementById('grid');
+    const overlay = document.getElementById('overlay');
+    const overlayPhoto = document.getElementById('overlayPhoto');
+    const pTitle = document.getElementById('p_title');
+    const pImg = document.getElementById('p_img');
+    const mTitle = document.getElementById('m_title');
+    const mBody = document.getElementById('m_body');
+
+    function render(){
+      grid.innerHTML = '';
+      for(const c of cards){
+        const el = document.createElement('div');
+        el.className = 'card';
+        el.innerHTML = `<div style="display:flex;align-items:center;gap:8px"><div class="n">${c.full_name}</div></div>
+                        <div class="muted">Возраст: ${c.age}</div>
+                        <div class="chips"><span class="chip">${c.level}</span><span class="chip">${c.details['Время суток']||''}</span></div>
+                        ${c.has_photo ? `<div style='margin-top:8px; display:flex; gap:8px;'>
+                          <button class='close' style='padding:8px 12px;' onclick="event.stopPropagation(); openPhoto(${c.id}, '${c.full_name.replace(/'/g,"&#39;")}')">Фото репоста</button>
+                          <button class='close' data-toggle='${c.id}' style='padding:8px 12px;' onclick="event.stopPropagation(); toggleProject(${c.id}, this)">${c.in_project ? 'Убрать из проекта' : 'В проект'}</button>
+                        </div>` : `<div style='margin-top:8px; display:flex; gap:8px;'>
+                          <button class='close' data-toggle='${c.id}' style='padding:8px 12px;' onclick="event.stopPropagation(); toggleProject(${c.id}, this)">${c.in_project ? 'Убрать из проекта' : 'В проект'}</button>
+                        </div>`}`;
+        el.onclick = () => openModal(c);
+        grid.appendChild(el);
+      }
+    }
+    function applyFilters(e){
+      e.preventDefault();
+      const p = new URLSearchParams();
+      const L=document.getElementById('f_level').value; if(L) p.set('level', L);
+      const G=document.getElementById('f_gender').value; if(G) p.set('gender', G);
+      const D=document.getElementById('f_day').value; if(D) p.set('day', D);
+      const T=document.getElementById('f_time').value; if(T) p.set('time', T);
+      const q = p.toString();
+      const url = q ? ('/?'+q) : '/';
+      startExit(url);
+    }
+    function openModal(c){
+      mTitle.textContent = c.full_name;
+      mBody.innerHTML = '';
+      for(const [k,v] of Object.entries(c.details)){
+        const row = document.createElement('div');
+        row.className = 'row';
+        row.innerHTML = `<div class="k">${k}</div><div>${(v ?? '-')}</div>`;
+        mBody.appendChild(row);
+      }
+      overlay.style.display = 'flex';
+      document.body.style.overflow = 'hidden';
+    }
+    function closeModal(){
+      overlay.style.display = 'none';
+      document.body.style.overflow = '';
+    }
+
+    function openPhoto(id, name){
+      pTitle.textContent = `Скриншот репоста — ${name}`;
+      pImg.src = `/photo/${id}`;
+      overlayPhoto.style.display = 'flex';
+      document.body.style.overflow = 'hidden';
+    }
+    function closePhoto(){
+      overlayPhoto.style.display = 'none';
+      pImg.removeAttribute('src');
+      document.body.style.overflow = '';
+    }
+
+    async function toggleProject(id, btn){
+      try{
+        const resp = await fetch(`/toggle/${id}`, {method:'POST'});
+        if(!resp.ok){ throw new Error(await resp.text()); }
+        const data = await resp.json();
+        const on = !!data.in_project;
+        btn.textContent = on ? 'Убрать из проекта' : 'В проект';
+        const b = document.getElementById(`badge-${id}`);
+        if(b){ b.style.display = on ? 'inline-block' : 'none'; }
+      }catch(e){
+        alert('Ошибка переключения: '+e);
+      }
+    }
+    render();
+    wireLinks();
+    startEnter();
+  </script>
+</body>
+</html>
