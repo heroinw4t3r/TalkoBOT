@@ -614,38 +614,51 @@ async def payment_photo(m: Message, state: FSMContext):
         await session.commit()
 
     
-    # Формирование текста анкеты
-    text = f"""
-    <b>Новая анкета:</b>
-    📝 <b>ФИО:</b> {data['full_name']}
-    🎂 <b>Возраст:</b> {data['age']}
-    🌐 <b>Часовой пояс:</b> {data['timezone']}
-    🏙️ <b>Город:</b> {data.get('city','Не указан')}
-    📞 <b>Telegram:</b> {data.get('tg_username', 'Не указан')}
-    📧 <b>Альтернативный контакт:</b> {data.get('alt_contact', 'Не указан')}
-    📊 <b>Уровень:</b> {data['level']}
-    🔄 <b>Опыт участия:</b> {data['participated_before']}
-    🎯 <b>Приоритет:</b> {data['priority']}
-    🎓 <b>Цели изучения:</b> {data.get('goals','Не указаны')}
-    🎨 <b>Хобби:</b> {data['hobbies']}
-    💬 <b>Темы:</b> {data['topics']}
-    📅 <b>Дни:</b> {', '.join(data['days'])}
-    ⏰ <b>Время:</b> {data['time_of_day']}
-    ⚡ <b>Строгость расписания:</b> {data['schedule_strictness']}
-    💡 <b>Инициатива:</b> {data['initiative']}
-    👫 <b>Предпочтительный партнер:</b> {data['preferred_partner_gender']}
-    📋 <b>Заметки:</b> {data['other_notes']}
-    ✅ <b>Принял правила:</b> {'Да' if data['accepted_rules'] else 'Нет'}
-    ✅ <b>Принял оферту:</b> {'Да' if data['accepted_offer'] else 'Нет'}
-    ✅ <b>Принял NDA:</b> {'Да' if data['accepted_nda'] else 'Нет'}
-    """
+    # Формирование краткого caption для фото
+    short_caption = f"📋 <b>Новая анкета от {data['full_name']}</b>\n📞 {data.get('tg_username', 'Не указан')} | 🎂 {data['age']} лет | 📊 {data['level']}"
+
+    # Формирование полного текста анкеты
+    full_text = f"""
+<b>📋 ПОЛНАЯ АНКЕТА</b>
+
+📝 <b>ФИО:</b> {data['full_name']}
+🎂 <b>Возраст:</b> {data['age']}
+🌐 <b>Часовой пояс:</b> {data['timezone']}
+🏙️ <b>Город:</b> {data.get('city','Не указан')}
+📞 <b>Telegram:</b> {data.get('tg_username', 'Не указан')}
+📧 <b>Альтернативный контакт:</b> {data.get('alt_contact', 'Не указан')}
+📊 <b>Уровень:</b> {data['level']}
+🔄 <b>Опыт участия:</b> {data['participated_before']}
+🎯 <b>Приоритет:</b> {data['priority']}
+🎓 <b>Цели изучения:</b> {data.get('goals','Не указаны')}
+🎨 <b>Хобби:</b> {data['hobbies']}
+💬 <b>Темы:</b> {data['topics']}
+📅 <b>Дни:</b> {', '.join(data['days'])}
+⏰ <b>Время:</b> {data['time_of_day']}
+⚡ <b>Строгость расписания:</b> {data['schedule_strictness']}
+💡 <b>Инициатива:</b> {data['initiative']}
+👫 <b>Предпочтительный партнер:</b> {data['preferred_partner_gender']}
+📋 <b>Заметки:</b> {data['other_notes']}
+✅ <b>Принял правила:</b> {'Да' if data['accepted_rules'] else 'Нет'}
+✅ <b>Принял оферту:</b> {'Да' if data['accepted_offer'] else 'Нет'}
+✅ <b>Принял NDA:</b> {'Да' if data['accepted_nda'] else 'Нет'}
+"""
 
     # Отправка в чат
     chat_id = settings.BOT1_CHAT_ID  # Добавьте эту переменную в config.py
+    
+    # 1. Отправляем фото с кратким caption
     await bot.send_photo(
         chat_id=chat_id,
         photo=file_id,
-        caption=text,
+        caption=short_caption,
+        parse_mode=ParseMode.HTML
+    )
+    
+    # 2. Отправляем полную анкету отдельным сообщением
+    await bot.send_message(
+        chat_id=chat_id,
+        text=full_text,
         parse_mode=ParseMode.HTML
     )
     await state.clear()
