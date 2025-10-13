@@ -24,7 +24,7 @@ dp.include_router(router)
 
 # Папка с правилами/договорами
 RULES_DIR = Path(__file__).resolve().parent / "rules"
-BASE_PRICE_RUB = 2000
+BASE_PRICE_RUB = 1000
 
 async def get_discount_percent(session: AsyncSession, user_identifier: str | None) -> float:
     if not user_identifier:
@@ -291,33 +291,34 @@ async def start(m: Message, state: FSMContext):
     await state.clear()
     # Приветственное сообщение + кнопки
     welcome_text = (
-        "Привет! Добро пожаловать в проект Talko.\n"
-        "Я помогу тебе записаться на программу Study Buddy и расскажу все подробности\n"
+        "Привет! Добро пожаловать в проект Talko\n"
+        "Я помогу тебе записаться на программу Study Buddy и расскажу все подробности\n\n"
         "Если хочешь записаться на программу - нажми кнопку \"Записаться\""
     )
-    await m.answer(welcome_text, reply_markup=kb(["Записаться", "Другое"], one_time=False, row=2))
+    await m.answer(welcome_text, reply_markup=kb(["Записаться", "Поддержка", "Другое"], one_time=False, row=2))
     await m.answer("По всем вопросом обращайтесь к @polyaa_makarova")
 
 @router.message(F.text == "Записаться")
 async def on_enroll(m: Message, state: FSMContext):
+    # TODO: Для тестов - проверка на повторное заполнение закомментирована
     # Проверка на повторное заполнение при нажатии "Записаться"
-    async with SessionLocal() as session:  # type: AsyncSession
-        exists_res = await session.execute(
-            select(models.Form.id).where(models.Form.tg_user_id == m.from_user.id)
-        )
-        if exists_res.first():
-            await m.answer("Вы уже заполнили анкету. Повторная отправка недоступна.", reply_markup=kb(["Другое"], row=1))
-            return
+    # async with SessionLocal() as session:  # type: AsyncSession
+    #     exists_res = await session.execute(
+    #         select(models.Form.id).where(models.Form.tg_user_id == m.from_user.id)
+    #     )
+    #     if exists_res.first():
+    #         await m.answer("Вы уже заполнили анкету. Повторная отправка недоступна.", reply_markup=kb(["Другое"], row=1))
+    #         return
     await m.answer("Заполним анкету.\nВведите, пожалуйста, ФИО:", reply_markup=ReplyKeyboardRemove())
     await state.set_state(FormStates.FULL_NAME)
 
 @router.message(StateFilter(None), F.text == "Другое")
 async def on_other(m: Message):
-    await m.answer("Выберите опцию:", reply_markup=kb(["Поддержка", "Сообщество", "Назад"], one_time=False, row=2))
+    await m.answer("Выберите опцию:", reply_markup=kb(["Материалы", "Buddy Points", "Сообщество", "Назад"], one_time=False, row=2))
 
 @router.message(StateFilter(None), F.text == "Назад")
 async def on_back(m: Message):
-    await m.answer("Главное меню:", reply_markup=kb(["Записаться", "Другое"], one_time=False, row=2))
+    await m.answer("Главное меню:", reply_markup=kb(["Записаться", "Поддержка", "Другое"], one_time=False, row=2))
 
 @router.message(StateFilter(None), F.text == "Поддержка")
 async def on_support(m: Message):
@@ -326,6 +327,52 @@ async def on_support(m: Message):
 @router.message(StateFilter(None), F.text == "Сообщество")
 async def on_community(m: Message):
     await m.answer("Подписывайтесь на наш канал https://t.me/Talko_1")
+
+@router.message(StateFilter(None), F.text == "Материалы")
+async def on_materials(m: Message):
+    # Создаем папку для материалов если её нет
+    materials_dir = Path(__file__).resolve().parent / "materials"
+    materials_dir.mkdir(exist_ok=True)
+    
+    # Проверяем есть ли файлы в папке materials
+    material_files = list(materials_dir.glob("*"))
+    if not material_files:
+        await m.answer("Материалы пока не загружены. Обратитесь к @polyaa_makarova для получения материалов.")
+        return
+    
+    await m.answer("Отправляю материалы:")
+    
+    # Отправляем все файлы из папки materials
+    for file_path in material_files:
+        if file_path.is_file():
+            try:
+                if file_path.suffix.lower() in ['.pdf', '.doc', '.docx', '.txt']:
+                    await m.answer_document(FSInputFile(str(file_path)))
+                elif file_path.suffix.lower() in ['.jpg', '.jpeg', '.png', '.gif']:
+                    await m.answer_photo(FSInputFile(str(file_path)))
+                else:
+                    await m.answer_document(FSInputFile(str(file_path)))
+            except Exception as e:
+                await m.answer(f"Ошибка при отправке файла {file_path.name}: {str(e)}")
+
+@router.message(StateFilter(None), F.text == "Buddy Points")
+async def on_buddy_points(m: Message):
+    # Ссылка на таблицу с баллами
+    buddy_points_url = "https://docs.google.com/spreadsheets/d/1slGRH846otlo04TZ_xVHuAd5Wuaq62THzfODENRC0yc/edit?usp=drivesdk"
+    
+    buddy_points_text = (
+        "🏆 <b>Buddy Points - Система баллов</b>\n\n"
+        "Здесь ты можешь отслеживать свои достижения и прогресс в программе Study Buddy!\n\n"
+        "📊 <b>Ссылка на таблицу с баллами:</b>\n"
+        f"{buddy_points_url}\n\n"
+        "💡 <b>Как работает система:</b>\n"
+        "• За каждое занятие с study buddy ты получаешь баллы\n"
+        "• Дополнительные баллы за активность в сообществе\n"
+        "• Баллы можно обменивать на призы и бонусы\n\n"
+        "По всем вопросам по системе баллов обращайся к @polyaa_makarova"
+    )
+    
+    await m.answer(buddy_points_text, parse_mode=ParseMode.HTML)
 
 @router.message(FormStates.FULL_NAME)
 async def full_name(m: Message, state: FSMContext):
@@ -601,14 +648,15 @@ async def payment_photo(m: Message, state: FSMContext):
     }
 
     async with SessionLocal() as session:  # type: AsyncSession
+        # TODO: Для тестов - проверка на повторное заполнение закомментирована
         # Дополнительная проверка на гонки: не вставлять дубликат, если уже есть запись
-        exists_res = await session.execute(
-            select(models.Form.id).where(models.Form.tg_user_id == m.from_user.id)
-        )
-        if exists_res.first():
-            await m.answer("Анкета уже существует. Повторная отправка недоступна.")
-            await state.clear()
-            return
+        # exists_res = await session.execute(
+        #     select(models.Form.id).where(models.Form.tg_user_id == m.from_user.id)
+        # )
+        # if exists_res.first():
+        #     await m.answer("Анкета уже существует. Повторная отправка недоступна.")
+        #     await state.clear()
+        #     return
 
         await session.execute(insert(models.Form).values(**to_save))
         await session.commit()
@@ -662,7 +710,13 @@ async def payment_photo(m: Message, state: FSMContext):
         parse_mode=ParseMode.HTML
     )
     await state.clear()
-    await m.answer("Спасибо! Анкета сохранена. 👍", reply_markup=kb(["Другое"], row=1))
+    final_message = (
+        "Поздравляем тебя с регистрацией на поток Talko!\n"
+        "Верим, что с нами у тебя появиться возможность избавиться от страха говорить на английском и ты найдешь новых друзей\n\n"
+        "За день до старта программы с тобой свяжется куратор, и ты узнаешь, кто твой Study Buddy.\n"
+        "Также по любым вопросам - ты можешь смело обращаться сюда: @polyaa_makarova!"
+    )
+    await m.answer(final_message, reply_markup=kb(["Другое"], row=1))
 
 @router.message(F.text)
 async def fallback(m: Message):
