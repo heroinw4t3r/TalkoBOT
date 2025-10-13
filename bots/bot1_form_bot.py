@@ -300,15 +300,14 @@ async def start(m: Message, state: FSMContext):
 
 @router.message(F.text == "Записаться")
 async def on_enroll(m: Message, state: FSMContext):
-    # TODO: Для тестов - проверка на повторное заполнение закомментирована
     # Проверка на повторное заполнение при нажатии "Записаться"
-    # async with SessionLocal() as session:  # type: AsyncSession
-    #     exists_res = await session.execute(
-    #         select(models.Form.id).where(models.Form.tg_user_id == m.from_user.id)
-    #     )
-    #     if exists_res.first():
-    #         await m.answer("Вы уже заполнили анкету. Повторная отправка недоступна.", reply_markup=kb(["Другое"], row=1))
-    #         return
+    async with SessionLocal() as session:  # type: AsyncSession
+        exists_res = await session.execute(
+            select(models.Form.id).where(models.Form.tg_user_id == m.from_user.id)
+        )
+        if exists_res.first():
+            await m.answer("Вы уже заполнили анкету. Повторная отправка недоступна.", reply_markup=kb(["Другое"], row=1))
+            return
     await m.answer("Заполним анкету.\nВведите, пожалуйста, ФИО:", reply_markup=ReplyKeyboardRemove())
     await state.set_state(FormStates.FULL_NAME)
 
@@ -648,15 +647,14 @@ async def payment_photo(m: Message, state: FSMContext):
     }
 
     async with SessionLocal() as session:  # type: AsyncSession
-        # TODO: Для тестов - проверка на повторное заполнение закомментирована
         # Дополнительная проверка на гонки: не вставлять дубликат, если уже есть запись
-        # exists_res = await session.execute(
-        #     select(models.Form.id).where(models.Form.tg_user_id == m.from_user.id)
-        # )
-        # if exists_res.first():
-        #     await m.answer("Анкета уже существует. Повторная отправка недоступна.")
-        #     await state.clear()
-        #     return
+        exists_res = await session.execute(
+            select(models.Form.id).where(models.Form.tg_user_id == m.from_user.id)
+        )
+        if exists_res.first():
+            await m.answer("Анкета уже существует. Повторная отправка недоступна.")
+            await state.clear()
+            return
 
         await session.execute(insert(models.Form).values(**to_save))
         await session.commit()
