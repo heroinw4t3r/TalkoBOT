@@ -65,3 +65,15 @@ class Discount(Base):
     __table_args__ = (
         UniqueConstraint('user_identifier', name='uq_discounts_user_identifier'),
     )
+
+
+class BuddyPoints(Base):
+    __tablename__ = "buddy_points"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_identifier: Mapped[str] = mapped_column(String(255), index=True)
+    points: Mapped[float] = mapped_column(Float, default=0.0)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow, onupdate=dt.datetime.utcnow)
+    __table_args__ = (
+        UniqueConstraint('user_identifier', name='uq_buddy_points_user_identifier'),
+    )
