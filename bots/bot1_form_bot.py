@@ -45,16 +45,35 @@ async def calc_price_with_discount_db(session: AsyncSession, username_with_at: s
 
 # ================== Импорт скидок из Excel в отдельном чате ==================
 
+async def get_buddy_points(session: AsyncSession, user_identifier: str | None) -> float:
+    if not user_identifier:
+        return 0.0
+    res = await session.execute(
+        select(models.BuddyPoints.points).where(models.BuddyPoints.user_identifier == user_identifier)
+    )
+    row = res.first()
+    return float(row[0]) if row else 0.0
+
+
 # Импорт разрешён: либо из чата DISCOUNT_CHAT_ID, либо от ADMIN_CHAT_ID (например, в ЛС)
 @router.message(F.document, (F.chat.id == settings.DISCOUNT_CHAT_ID) | (F.from_user.id == settings.ADMIN_CHAT_ID))
-async def import_discounts_from_excel(m: Message):
+async def import_discounts_or_buddyp_from_excel(m: Message):
     doc: Document = m.document  # type: ignore
     if not doc.file_name.lower().endswith((".xlsx", ".xlsm")):
         await m.answer("Пожалуйста, отправьте Excel-файл формата .xlsx/.xlsm")
         return
+    fname = doc.file_name or ""
+    lname = fname.lower()
+    is_discount = lname.startswith("discount") or "_discount" in lname or " discount" in lname
+    is_buddyp = lname.startswith("buddyp") or "_buddyp" in lname or " buddyp" in lname
+
+    if not (is_discount or is_buddyp):
+        await m.answer("Название файла должно начинаться с 'discount' (скидки) или 'buddyP' (Buddy Points).")
+        return
+
     await m.answer("Файл принят, начинаю обработку…", reply_markup=kb(["Сбросить скидки", "Help"], row=2))
     try:
-        print(f"[DISCOUNTS] Received file: name={doc.file_name}, size={doc.file_size}, mime={doc.mime_type}")
+        print(f"[IMPORT] Received file: name={doc.file_name}, size={doc.file_size}, mime={doc.mime_type}, mode={'DISCOUNT' if is_discount else 'BUDDYP'}")
     except Exception:
         pass
 
@@ -64,15 +83,15 @@ async def import_discounts_from_excel(m: Message):
     tmp_dir = Path("./data/tmp")
     tmp_dir.mkdir(parents=True, exist_ok=True)
     local_path = tmp_dir / doc.file_name
-    print(f"[DISCOUNTS] Downloading from TG path: {file_path} -> {local_path}")
+    print(f"[IMPORT] Downloading from TG path: {file_path} -> {local_path}")
     await bot.download_file(file_path, destination=str(local_path))
-    print(f"[DISCOUNTS] File downloaded: {local_path.exists()} size={local_path.stat().st_size if local_path.exists() else 'n/a'}")
+    print(f"[IMPORT] File downloaded: {local_path.exists()} size={local_path.stat().st_size if local_path.exists() else 'n/a'}")
 
     try:
-        print("[DISCOUNTS] Opening workbook…")
+        print("[IMPORT] Opening workbook…")
         wb = load_workbook(filename=str(local_path), read_only=True, data_only=True)
         ws = wb.active
-        print(f"[DISCOUNTS] Active sheet: {ws.title}")
+        print(f"[IMPORT] Active sheet: {ws.title}")
         updates = 0
         inserts = 0
         skipped = 0
@@ -89,52 +108,82 @@ async def import_discounts_from_excel(m: Message):
                 # Нормализуем к виду @username
                 if not user_ident.startswith("@"):
                     user_ident = f"@{user_ident}"
-                # Парсим процент
-                percent_raw = row[1]
+                value_raw = row[1]
                 try:
-                    if isinstance(percent_raw, str) and percent_raw.endswith("%"):
-                        percent_val = float(percent_raw[:-1])
+                    if is_discount and isinstance(value_raw, str) and value_raw.endswith("%"):
+                        value_val = float(value_raw[:-1])
                     else:
-                        percent_val = float(percent_raw)
+                        value_val = float(value_raw)
                 except Exception:
                     skipped += 1
-                    print(f"[DISCOUNTS] Row {row_index}: failed to parse percent '{row[1]}' -> skipped")
+                    print(f"[IMPORT] Row {row_index}: failed to parse value '{row[1]}' -> skipped")
                     continue
 
-                res = await session.execute(
-                    select(models.Discount).where(models.Discount.user_identifier == user_ident)
-                )
-                existing = res.scalar_one_or_none()
-                if existing is None:
-                    await session.execute(
-                        insert(models.Discount).values(user_identifier=user_ident, percent=percent_val)
+                if is_discount:
+                    res = await session.execute(
+                        select(models.Discount).where(models.Discount.user_identifier == user_ident)
                     )
-                    inserts += 1
-                    print(f"[DISCOUNTS] Row {row_index}: add {user_ident} -> {percent_val}%")
-                    summary_rows.append((user_ident, None, percent_val, "added"))
-                else:
-                    old_percent = float(existing.percent or 0.0)
-                    if abs(old_percent - percent_val) > 1e-9:
+                    existing = res.scalar_one_or_none()
+                    if existing is None:
                         await session.execute(
-                            update(models.Discount)
-                            .where(models.Discount.id == existing.id)
-                            .values(percent=percent_val)
+                            insert(models.Discount).values(user_identifier=user_ident, percent=value_val)
                         )
-                        updates += 1
-                        print(f"[DISCOUNTS] Row {row_index}: update {user_ident} {old_percent}% -> {percent_val}%")
-                        summary_rows.append((user_ident, old_percent, percent_val, "updated"))
+                        inserts += 1
+                        print(f"[DISCOUNTS] Row {row_index}: add {user_ident} -> {value_val}%")
+                        summary_rows.append((user_ident, None, value_val, "added"))
                     else:
-                        skipped += 1
-                        print(f"[DISCOUNTS] Row {row_index}: unchanged {user_ident} {old_percent}%")
-                        summary_rows.append((user_ident, old_percent, old_percent, "unchanged"))
+                        old_val = float(existing.percent or 0.0)
+                        if abs(old_val - value_val) > 1e-9:
+                            await session.execute(
+                                update(models.Discount)
+                                .where(models.Discount.id == existing.id)
+                                .values(percent=value_val)
+                            )
+                            updates += 1
+                            print(f"[DISCOUNTS] Row {row_index}: update {user_ident} {old_val}% -> {value_val}%")
+                            summary_rows.append((user_ident, old_val, value_val, "updated"))
+                        else:
+                            skipped += 1
+                            print(f"[DISCOUNTS] Row {row_index}: unchanged {user_ident} {old_val}%")
+                            summary_rows.append((user_ident, old_val, old_val, "unchanged"))
+                else:
+                    res = await session.execute(
+                        select(models.BuddyPoints).where(models.BuddyPoints.user_identifier == user_ident)
+                    )
+                    existing = res.scalar_one_or_none()
+                    if existing is None:
+                        await session.execute(
+                            insert(models.BuddyPoints).values(user_identifier=user_ident, points=value_val)
+                        )
+                        inserts += 1
+                        print(f"[BUDDYP] Row {row_index}: add {user_ident} -> {value_val}")
+                        summary_rows.append((user_ident, None, value_val, "added"))
+                    else:
+                        old_val = float(existing.points or 0.0)
+                        if abs(old_val - value_val) > 1e-9:
+                            await session.execute(
+                                update(models.BuddyPoints)
+                                .where(models.BuddyPoints.id == existing.id)
+                                .values(points=value_val)
+                            )
+                            updates += 1
+                            print(f"[BUDDYP] Row {row_index}: update {user_ident} {old_val} -> {value_val}")
+                            summary_rows.append((user_ident, old_val, value_val, "updated"))
+                        else:
+                            skipped += 1
+                            print(f"[BUDDYP] Row {row_index}: unchanged {user_ident} {old_val}")
+                            summary_rows.append((user_ident, old_val, old_val, "unchanged"))
             await session.commit()
-        print(f"[DISCOUNTS] Import done: inserts={inserts}, updates={updates}, unchanged={skipped}")
+        print(f"[IMPORT] Import done: inserts={inserts}, updates={updates}, unchanged={skipped}")
         # Формируем сводную таблицу Excel
         summary_path = tmp_dir / (local_path.stem + "_summary.xlsx")
         wb_out = Workbook()
         ws_out = wb_out.active
         ws_out.title = "Итоги импорта"
-        ws_out.append(["Пользователь", "Старый %", "Новый %", "Действие"])
+        if is_discount:
+            ws_out.append(["Пользователь", "Старый %", "Новый %", "Действие"])
+        else:
+            ws_out.append(["Пользователь", "Старые баллы", "Новые баллы", "Действие"])
         for user, oldp, newp, action in summary_rows:
             ws_out.append([user, oldp if oldp is not None else "—", newp if newp is not None else "—", action])
         wb_out.save(str(summary_path))
@@ -145,10 +194,10 @@ async def import_discounts_from_excel(m: Message):
         )
         await m.answer_document(
             FSInputFile(str(summary_path)),
-            caption="Сводная таблица по импорту скидок"
+            caption=("Сводная таблица по импорту скидок" if is_discount else "Сводная таблица по импорту Buddy Points")
         )
     except Exception as e:
-        print(f"[DISCOUNTS] Import error: {e}")
+        print(f"[IMPORT] Import error: {e}")
         await m.answer(f"Ошибка импорта: {e}", reply_markup=kb(["Сбросить скидки", "Help"], row=2))
     finally:
         try:
@@ -165,8 +214,9 @@ async def import_discounts_from_excel(m: Message):
 async def reject_import_from_other_chats(m: Message):
     try:
         await m.answer(
-            f"Импорт скидок разрешён только в специальном чате. Текущий chat_id: {m.chat.id}.\n"
-            f"Ожидаемый DISCOUNT_CHAT_ID: {settings.DISCOUNT_CHAT_ID}."
+            f"Импорт скидок и Buddy Points разрешён только в специальном чате. Текущий chat_id: {m.chat.id}.\n"
+            f"Ожидаемый DISCOUNT_CHAT_ID: {settings.DISCOUNT_CHAT_ID}.\n"
+            f"Названия файлов: 'discount*.xlsx' для скидок и 'buddyP*.xlsx' для Buddy Points."
         )
     except Exception:
         pass
@@ -194,8 +244,9 @@ async def reset_all_discounts(m: Message):
 @router.message(F.chat.id == settings.DISCOUNT_CHAT_ID, (F.text.lower() == "/start") | (F.text.lower() == "help") | (F.text.lower() == "/help") | (F.text.lower() == "меню"))
 async def discount_chat_help(m: Message):
     help_text = (
-        "Управление скидками:\n"
-        "- Отправьте Excel (.xlsx/.xlsm) с колонками: A=@username, B=скидка (напр. 10 или 10%).\n"
+        "Управление скидками и Buddy Points:\n"
+        "- Для скидок: отправьте Excel (.xlsx/.xlsm), имя файла начинается с 'discount', столбцы: A=@username, B=скидка (напр. 10 или 10%).\n"
+        "- Для Buddy Points: отправьте Excel (.xlsx/.xlsm), имя файла начинается с 'buddyP', столбцы: A=@username, B=баллы (число).\n"
         "- Кнопка ‘Сбросить скидки’ удалит все записи.\n"
         "- Кнопка ‘Help’ — это сообщение.\n"
         f"DISCOUNT_CHAT_ID: {settings.DISCOUNT_CHAT_ID}\n"
@@ -356,22 +407,17 @@ async def on_materials(m: Message):
 
 @router.message(StateFilter(None), F.text == "Buddy Points")
 async def on_buddy_points(m: Message):
-    # Ссылка на таблицу с баллами
-    buddy_points_url = "https://docs.google.com/spreadsheets/d/1slGRH846otlo04TZ_xVHuAd5Wuaq62THzfODENRC0yc/edit?usp=drivesdk"
-    
-    buddy_points_text = (
-        "🏆 <b>Buddy Points - Система баллов</b>\n\n"
-        "Здесь ты можешь отслеживать свои достижения и прогресс в программе Study Buddy!\n\n"
-        "📊 <b>Ссылка на таблицу с баллами:</b>\n"
-        f"{buddy_points_url}\n\n"
-        "💡 <b>Как работает система:</b>\n"
-        "• За каждое занятие с study buddy ты получаешь баллы\n"
-        "• Дополнительные баллы за активность в сообществе\n"
-        "• Баллы можно обменивать на призы и бонусы\n\n"
-        "По всем вопросам по системе баллов обращайся к @polyaa_makarova"
+    username = (m.from_user.username or "").strip()
+    username_with_at = f"@{username}" if username else None
+    async with SessionLocal() as session:  # type: AsyncSession
+        points = await get_buddy_points(session, username_with_at)
+    if username_with_at is None:
+        await m.answer("У вас не установлен публичный @username в Telegram. Установите его в настройках и повторите попытку.")
+        return
+    await m.answer(
+        f"🏆 <b>Buddy Points</b>\n\nВаш @username: {username_with_at}\nТекущий баланс: <b>{points:.0f}</b>",
+        parse_mode=ParseMode.HTML
     )
-    
-    await m.answer(buddy_points_text, parse_mode=ParseMode.HTML)
 
 @router.message(FormStates.FULL_NAME)
 async def full_name(m: Message, state: FSMContext):
